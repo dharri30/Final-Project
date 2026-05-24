@@ -1,0 +1,17 @@
+pytest
+ipywidgets
+streamlit
+pandas
+numpy
+pillow
+openpyxl
+lxml
+fastapi
+uvicorn
+playwright
+pytest-playwright
+seaborn
+geopandas[all]
+mapclassify
+folium
+streamlit-folium
