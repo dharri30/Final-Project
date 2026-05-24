@@ -1,0 +1,91 @@
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from pathlib import Path
+import pandas as pd
+import pickle
+import streamlit as st
+
+CACHE_DIR = Path("cache")
+PROJECT_CACHE_FILE = CACHE_DIR / "project_cache.pkl"
+
+# 
+
+INDIVIDUAL_CACHE_FILES = {
+    name: CACHE_DIR / f"{name}.pkl"
+    for name in URLS
+}
+
+
+def scrape_table(url):
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+
+            page = browser.new_page(
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+            )
+
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+
+            try:
+                page.wait_for_selector("table", timeout=15000)
+            except PlaywrightTimeoutError:
+                print(f"No table loaded on: {url}")
+                browser.close()
+                return pd.DataFrame()
+
+            html = page.content()
+            browser.close()
+
+        tables = pd.read_html(html)
+
+        if len(tables) == 0:
+            return pd.DataFrame()
+
+        return tables[0]
+
+    except PlaywrightTimeoutError:
+        print(f"Timeout while scraping: {url}")
+        return pd.DataFrame()
+
+    except ValueError:
+        print(f"No tables found for: {url}")
+        return pd.DataFrame()
+
+    except Exception as e:
+        print(f"Error scraping {url}: {e}")
+        return pd.DataFrame()
+
+
+def create_cache_from_scraped_data():
+    CACHE_DIR.mkdir(exist_ok=True)
+
+    cached_data = {}
+
+    for name, url in URLS.items():
+        st.write(f"Scraping {name} data...")
+
+        df = scrape_table(url)
+
+        if df.empty:
+            st.write(f"Skipping {name} because no table was found.")
+            continue
+
+        cached_data[name] = df
+
+        with open(INDIVIDUAL_CACHE_FILES[name], "wb") as file:
+            pickle.dump(df, file)
+
+    with open(PROJECT_CACHE_FILE, "wb") as file:
+        pickle.dump(cached_data, file)
+
+    return cached_data
+
+
+def load_project_cache():
+    CACHE_DIR.mkdir(exist_ok=True)
+
+    if PROJECT_CACHE_FILE.exists():
+        with open(PROJECT_CACHE_FILE, "rb") as file:
+            return pickle.load(file)
+
+    return create_cache_from_scraped_data()
